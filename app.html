@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moneda Local - Montornès del Vallès</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Ethers.js v6 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <!-- Generador de QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Lector de QR usando la cámara (HTML5 QR Code) -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body class="bg-gray-50 font-sans text-gray-900 min-h-screen flex flex-col justify-between">
+
+    <!-- Encabezado -->
+    <header class="bg-indigo-600 text-white p-4 shadow-md text-center">
+        <h1 class="text-xl font-bold">Moneda Local de Montornès</h1>
+        <p class="text-xs opacity-90">Entorno de Pruebas (Sandbox)</p>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="max-w-md w-full mx-auto p-4 flex-grow space-y-4">
+        
+        <!-- Estado de Conexión e Instrucciones MetaMask -->
+        <div id="connectionCard" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-center">
+            <button id="btnConnect" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg transition">
+                Conectar MetaMask
+            </button>
+            
+            <!-- Mensaje de ayuda si no se detecta -->
+            <div id="noMetaMaskAlert" class="hidden mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-left text-xs text-amber-800">
+                <p class="font-bold">¿MetaMask no detectado?</p>
+                <ul class="list-disc list-inside mt-1 space-y-1">
+                    <li>Si estás en el <strong>móvil</strong>, abre este enlace dentro del navegador interno de la app de MetaMask.</li>
+                    <li>Si estás en el <strong>ordenador</strong>, asegúrate de no estar abriendo el archivo haciendo doble clic directo (usa un servidor local).</li>
+                </ul>
+            </div>
+
+            <div id="userInfo" class="hidden mt-2 text-sm text-left space-y-1">
+                <p class="text-gray-500 truncate"><strong>Dirección:</strong> <span id="userAddress" class="font-mono text-xs text-indigo-600"></span></p>
+                <p class="text-gray-800 font-medium"><strong>Saldo:</strong> <span id="tokenBalance">0.00</span> <span class="tokenSymbol">TOKENS</span></p>
+            </div>
+        </div>
+
+        <!-- Navegación de Roles -->
+        <div class="flex border-b border-gray-200">
+            <button id="tabBuyer" class="flex-1 py-2 text-center font-semibold border-b-2 border-indigo-500 text-indigo-600">
+                Pagar (Comprador)
+            </button>
+            <button id="tabMerchant" class="flex-1 py-2 text-center font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                Cobrar (Comercio)
+            </button>
+        </div>
+
+        <!-- Sección Comprador -->
+        <section id="sectionBuyer" class="space-y-4">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4">
+                <h2 class="text-lg font-bold text-gray-800">Enviar Pago al Comercio</h2>
+                
+                <!-- Botón de Escáner de Cámara -->
+                <div class="space-y-2">
+                    <button id="btnScan" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition text-sm">
+                        📸 Escanear QR del Comercio
+                    </button>
+                    
+                    <!-- Contenedor del lector de cámara (oculto por defecto) -->
+                    <div id="scannerContainer" class="hidden border border-gray-300 rounded-lg overflow-hidden bg-black relative">
+                        <div id="interactiveScanner" class="w-full"></div>
+                        <button id="btnCancelScan" class="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded">Cerrar</button>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-100 pt-3">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Dirección del Comercio</label>
+                    <input id="recipientAddress" type="text" placeholder="0x..." class="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Cantidad a Enviar</label>
+                    <input id="sendAmount" type="number" step="0.01" placeholder="0.00" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                </div>
+
+                <button id="btnSend" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-lg transition shadow-sm">
+                    Confirmar Transacción
+                </button>
+            </div>
+        </section>
+
+        <!-- Sección Comercio -->
+        <section id="sectionMerchant" class="hidden space-y-4">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4 text-center">
+                <h2 class="text-lg font-bold text-gray-800">Recibir Pago</h2>
+                <p class="text-xs text-gray-500">Muestra este código QR al comprador para recibir los tokens de forma instantánea.</p>
+                
+                <!-- Contenedor del Código QR -->
+                <div class="flex justify-center py-4">
+                    <div id="qrcode" class="p-2 bg-white border rounded-lg shadow-inner"></div>
+                </div>
+
+                <div class="text-left bg-gray-50 p-3 rounded-lg">
+                    <p class="text-xs font-semibold text-gray-500 uppercase">Mi Dirección:</p>
+                    <p id="merchantAddressDisplay" class="text-[10px] text-gray-600 font-mono break-all mt-1 bg-white p-1.5 border rounded"></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Consola de Estado / Log -->
+        <div id="statusBox" class="hidden p-3 rounded-lg text-xs font-mono text-center"></div>
+
+    </main>
+
+    <!-- Pie de página -->
+    <footer class="bg-gray-100 text-center py-4 border-t text-xs text-gray-500">
+        Proyecto de Investigación: Economía Circular y Monedas Sociales
+    </footer>
+
+    <!-- Lógica de Control de la Aplicación -->
+    <script>
+        // CONFIGURACIÓN DEL TOKEN (Reemplaza con la dirección de tu token)
+        const TOKEN_CONTRACT_ADDRESS = "0x82a0F251315822A0a322627028ebaB6FF95629F3"; 
+        
+        const TOKEN_ABI = [
+            "function balanceOf(address owner) view returns (uint256)",
+            "function transfer(address to, uint256 value) returns (bool)",
+            "function decimals() view returns (uint8)",
+            "function symbol() view returns (string)"
+        ];
+
+        let provider;
+        let signer;
+        let tokenContract;
+        let userAddress = "";
+        let tokenDecimals = 18;
+        let html5QrcodeScanner = null;
+
+        // Elementos DOM
+        const btnConnect = document.getElementById("btnConnect");
+        const noMetaMaskAlert = document.getElementById("noMetaMaskAlert");
+        const userInfo = document.getElementById("userInfo");
+        const spanUserAddress = document.getElementById("userAddress");
+        const spanTokenBalance = document.getElementById("tokenBalance");
+        const spanTokenSymbols = document.querySelectorAll(".tokenSymbol");
+        const statusBox = document.getElementById("statusBox");
+
+        const tabBuyer = document.getElementById("tabBuyer");
+        const tabMerchant = document.getElementById("tabMerchant");
+        const sectionBuyer = document.getElementById("sectionBuyer");
+        const sectionMerchant = document.getElementById("sectionMerchant");
+
+        const inputRecipient = document.getElementById("recipientAddress");
+        const inputAmount = document.getElementById("sendAmount");
+        const btnSend = document.getElementById("btnSend");
+        const qrContainer = document.getElementById("qrcode");
+        const merchantAddressDisplay = document.getElementById("merchantAddressDisplay");
+
+        // Elementos del Escáner QR
+        const btnScan = document.getElementById("btnScan");
+        const scannerContainer = document.getElementById("scannerContainer");
+        const btnCancelScan = document.getElementById("btnCancelScan");
+
+        // Detección inicial de soporte Web3
+        window.addEventListener("load", () => {
+            if (typeof window.ethereum === "undefined") {
+                noMetaMaskAlert.classList.remove("hidden");
+            }
+        });
+
+        // Conmutación de Pestañas
+        tabBuyer.addEventListener("click", () => switchTab('buyer'));
+        tabMerchant.addEventListener("click", () => switchTab('merchant'));
+
+        function switchTab(role) {
+            stopScanner(); // Detener cámara si cambia de pestaña
+            if (role === 'buyer') {
+                tabBuyer.className = "flex-1 py-2 text-center font-semibold border-b-2 border-indigo-500 text-indigo-600";
+                tabMerchant.className = "flex-1 py-2 text-center font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700";
+                sectionBuyer.classList.remove("hidden");
+                sectionMerchant.classList.add("hidden");
+            } else {
+                tabBuyer.className = "flex-1 py-2 text-center font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700";
+                tabMerchant.className = "flex-1 py-2 text-center font-semibold border-b-2 border-indigo-500 text-indigo-600";
+                sectionBuyer.classList.add("hidden");
+                sectionMerchant.classList.remove("hidden");
+                if (userAddress) {
+                    generateMerchantQR(userAddress);
+                }
+            }
+        }
+
+        // Conectar Cartera
+        btnConnect.addEventListener("click", async () => {
+            if (typeof window.ethereum !== "undefined") {
+                try {
+                    noMetaMaskAlert.classList.add("hidden");
+                    showStatus("Conectando con MetaMask...", "info");
+                    
+                    provider = new ethers.BrowserProvider(window.ethereum);
+                    await provider.send("eth_requestAccounts", []);
+                    signer = await provider.getSigner();
+                    userAddress = await signer.getAddress();
+
+                    tokenContract = new ethers.Contract(TOKEN_CONTRACT_ADDRESS, TOKEN_ABI, signer);
+
+                    await updateMetadata();
+                    await updateBalance();
+
+                    btnConnect.classList.add("hidden");
+                    userInfo.classList.remove("hidden");
+                    showStatus("Conectado con éxito.", "success");
+
+                    generateMerchantQR(userAddress);
+
+                } catch (error) {
+                    console.error(error);
+                    showStatus("Error al conectar: " + error.message, "error");
+                }
+            } else {
+                noMetaMaskAlert.classList.remove("hidden");
+                showStatus("MetaMask no detectado.", "error");
+            }
+        });
+
+        // Obtener datos del token
+        async function updateMetadata() {
+            try {
+                const symbol = await tokenContract.symbol();
+                tokenDecimals = await tokenContract.decimals();
+                spanTokenSymbols.forEach(el => el.innerText = symbol);
+            } catch (err) {
+                console.warn("Utilizando valores predeterminados para el token.");
+            }
+        }
+
+        async function updateBalance() {
+            if (!tokenContract || !userAddress) return;
+            try {
+                const balanceBigInt = await tokenContract.balanceOf(userAddress);
+                const formattedBalance = ethers.formatUnits(balanceBigInt, tokenDecimals);
+                spanUserAddress.innerText = userAddress;
+                spanTokenBalance.innerText = parseFloat(formattedBalance).toFixed(2);
+            } catch (err) {
+                console.error("Error cargando saldo:", err);
+            }
+        }
+
+        // Enviar Dinero (Comprador)
+        btnSend.addEventListener("click", async () => {
+            const recipient = inputRecipient.value.trim();
+            const amountStr = inputAmount.value.trim();
+
+            if (!recipient || !amountStr) {
+                showStatus("Faltan campos por rellenar.", "error");
+                return;
+            }
+
+            if (!ethers.isAddress(recipient)) {
+                showStatus("La dirección no tiene un formato válido.", "error");
+                return;
+            }
+
+            try {
+                showStatus("Espere confirmación en MetaMask...", "info");
+                const amount = ethers.parseUnits(amountStr, tokenDecimals);
+                const tx = await tokenContract.transfer(recipient, amount);
+                
+                showStatus("Transacción enviada. Esperando validación...", "info");
+                await tx.wait();
+                
+                showStatus("¡Pago transferido con éxito!", "success");
+                inputAmount.value = "";
+                inputRecipient.value = "";
+                await updateBalance();
+            } catch (error) {
+                console.error(error);
+                showStatus("La transacción falló o fue rechazada.", "error");
+            }
+        });
+
+        // Generar QR para Recibir Pagos (Comercio)
+        function generateMerchantQR(address) {
+            qrContainer.innerHTML = "";
+            merchantAddressDisplay.innerText = address;
+            new QRCode(qrContainer, {
+                text: address,
+                width: 180,
+                height: 180,
+                colorDark: "#312e81",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        // FUNCIONES DEL ESCÁNER DE CÁMARA (Lector QR)
+        btnScan.addEventListener("click", () => {
+            scannerContainer.classList.remove("hidden");
+            btnScan.classList.add("hidden");
+            
+            // Inicializar lector
+            html5QrcodeScanner = new Html5Qrcode("interactiveScanner");
+            
+            const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+                // Verificar si lo escaneado es una dirección válida de Ethereum
+                if (ethers.isAddress(decodedText)) {
+                    inputRecipient.value = decodedText;
+                    showStatus("Dirección detectada correctamente.", "success");
+                    stopScanner();
+                } else {
+                    showStatus("El código QR escaneado no es una dirección válida.", "error");
+                }
+            };
+
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            html5QrcodeScanner.start(
+                { facingMode: "environment" }, // Cámara trasera por defecto
+                config,
+                qrCodeSuccessCallback
+            ).catch(err => {
+                console.error("Error al iniciar cámara: ", err);
+                showStatus("No se pudo acceder a la cámara del dispositivo.", "error");
+                stopScanner();
+            });
+        });
+
+        btnCancelScan.addEventListener("click", stopScanner);
+
+        function stopScanner() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    html5QrcodeScanner = null;
+                    scannerContainer.classList.add("hidden");
+                    btnScan.classList.remove("hidden");
+                }).catch(err => console.warn("Error al apagar cámara:", err));
+            } else {
+                scannerContainer.classList.add("hidden");
+                btnScan.classList.remove("hidden");
+            }
+        }
+
+        // Utilidad de logs
+        function showStatus(msg, type) {
+            statusBox.innerText = msg;
+            statusBox.classList.remove("hidden", "bg-blue-100", "text-blue-700", "bg-red-100", "text-red-700", "bg-green-100", "text-green-700");
+            if (type === "info") statusBox.classList.add("bg-blue-100", "text-blue-700");
+            else if (type === "error") statusBox.classList.add("bg-red-100", "text-red-700");
+            else if (type === "success") statusBox.classList.add("bg-green-100", "text-green-700");
+        }
+    </script>
+</body>
+</html>
