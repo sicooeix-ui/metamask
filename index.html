@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="ca">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,7 +18,7 @@
     <!-- Encabezado -->
     <header class="bg-indigo-600 text-white p-4 shadow-md text-center">
         <h1 class="text-xl font-bold">Moneda Local de Montornès</h1>
-        <p class="text-xs opacity-90">Entorno de Pruebas (Sandbox)</p>
+        <p class="text-xs opacity-90">Entorn de Proves (Sandbox)</p>
     </header>
 
     <!-- Contenido Principal -->
@@ -27,20 +27,20 @@
         <!-- Estado de Conexión e Instrucciones MetaMask -->
         <div id="connectionCard" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-center">
             <button id="btnConnect" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg transition">
-                Conectar MetaMask
+                Connectar MetaMask
             </button>
             
             <!-- Mensaje de ayuda si no se detecta -->
             <div id="noMetaMaskAlert" class="hidden mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-left text-xs text-amber-800">
-                <p class="font-bold">¿MetaMask no detectado?</p>
+                <p class="font-bold">MetaMask no detectat?</p>
                 <ul class="list-disc list-inside mt-1 space-y-1">
-                    <li>Si estás en el <strong>móvil</strong>, abre este enlace dentro del navegador interno de la app de MetaMask.</li>
-                    <li>Si estás en el <strong>ordenador</strong>, asegúrate de no estar abriendo el archivo haciendo doble clic directo (usa un servidor local).</li>
+                    <li>Si estàs al <strong>mòbil</strong>, obre aquest enllaç dins del navegador intern de l'app de MetaMask.</li>
+                    <li>Si estàs a l'<strong>ordinador</strong>, assegura't de no obrir l'arxiu fent doble clic directe (utilitza un servidor local).</li>
                 </ul>
             </div>
 
             <div id="userInfo" class="hidden mt-2 text-sm text-left space-y-1">
-                <p class="text-gray-500 truncate"><strong>Dirección:</strong> <span id="userAddress" class="font-mono text-xs text-indigo-600"></span></p>
+                <p class="text-gray-500 truncate"><strong>Adreça:</strong> <span id="userAddress" class="font-mono text-xs text-indigo-600"></span></p>
                 <p class="text-gray-800 font-medium"><strong>Saldo:</strong> <span id="tokenBalance">0.00</span> <span class="tokenSymbol">TOKENS</span></p>
             </div>
         </div>
@@ -51,40 +51,40 @@
                 Pagar (Comprador)
             </button>
             <button id="tabMerchant" class="flex-1 py-2 text-center font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-                Cobrar (Comercio)
+                Cobrar (Comerç)
             </button>
         </div>
 
         <!-- Sección Comprador -->
         <section id="sectionBuyer" class="space-y-4">
             <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4">
-                <h2 class="text-lg font-bold text-gray-800">Enviar Pago al Comercio</h2>
+                <h2 class="text-lg font-bold text-gray-800">Enviar Pagament al Comerç</h2>
                 
                 <!-- Botón de Escáner de Cámara -->
                 <div class="space-y-2">
                     <button id="btnScan" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition text-sm">
-                        📸 Escanear QR del Comercio
+                        📸 Escanejar QR del Comerç
                     </button>
                     
                     <!-- Contenedor del lector de cámara (oculto por defecto) -->
                     <div id="scannerContainer" class="hidden border border-gray-300 rounded-lg overflow-hidden bg-black relative">
                         <div id="interactiveScanner" class="w-full"></div>
-                        <button id="btnCancelScan" class="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded">Cerrar</button>
+                        <button id="btnCancelScan" class="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded">Tancar</button>
                     </div>
                 </div>
 
                 <div class="border-t border-gray-100 pt-3">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Dirección del Comercio</label>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Adreça del Comerç</label>
                     <input id="recipientAddress" type="text" placeholder="0x..." class="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono">
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Cantidad a Enviar</label>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Quantitat a Enviar</label>
                     <input id="sendAmount" type="number" step="0.01" placeholder="0.00" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 </div>
 
                 <button id="btnSend" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-lg transition shadow-sm">
-                    Confirmar Transacción
+                    Confirmar Transacció
                 </button>
             </div>
         </section>
@@ -92,8 +92,8 @@
         <!-- Sección Comercio -->
         <section id="sectionMerchant" class="hidden space-y-4">
             <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4 text-center">
-                <h2 class="text-lg font-bold text-gray-800">Recibir Pago</h2>
-                <p class="text-xs text-gray-500">Muestra este código QR al comprador para recibir los tokens de forma instantánea.</p>
+                <h2 class="text-lg font-bold text-gray-800">Rebre Pagament</h2>
+                <p class="text-xs text-gray-500">Mostra aquest codi QR al comprador per rebre els tokens de forma instantània.</p>
                 
                 <!-- Contenedor del Código QR -->
                 <div class="flex justify-center py-4">
@@ -101,7 +101,7 @@
                 </div>
 
                 <div class="text-left bg-gray-50 p-3 rounded-lg">
-                    <p class="text-xs font-semibold text-gray-500 uppercase">Mi Dirección:</p>
+                    <p class="text-xs font-semibold text-gray-500 uppercase">La Meva Adreça:</p>
                     <p id="merchantAddressDisplay" class="text-[10px] text-gray-600 font-mono break-all mt-1 bg-white p-1.5 border rounded"></p>
                 </div>
             </div>
@@ -114,7 +114,7 @@
 
     <!-- Pie de página -->
     <footer class="bg-gray-100 text-center py-4 border-t text-xs text-gray-500">
-        Proyecto de Investigación: Economía Circular y Monedas Sociales
+        Projecte de Recerca: Economia Circular i Monedes Socials
     </footer>
 
     <!-- Lógica de Control de la Aplicación -->
@@ -195,7 +195,7 @@
             if (typeof window.ethereum !== "undefined") {
                 try {
                     noMetaMaskAlert.classList.add("hidden");
-                    showStatus("Conectando con MetaMask...", "info");
+                    showStatus("Connectant amb MetaMask...", "info");
                     
                     provider = new ethers.BrowserProvider(window.ethereum);
                     await provider.send("eth_requestAccounts", []);
@@ -209,17 +209,17 @@
 
                     btnConnect.classList.add("hidden");
                     userInfo.classList.remove("hidden");
-                    showStatus("Conectado con éxito.", "success");
+                    showStatus("Connectat amb èxit.", "success");
 
                     generateMerchantQR(userAddress);
 
                 } catch (error) {
                     console.error(error);
-                    showStatus("Error al conectar: " + error.message, "error");
+                    showStatus("Error en connectar: " + error.message, "error");
                 }
             } else {
                 noMetaMaskAlert.classList.remove("hidden");
-                showStatus("MetaMask no detectado.", "error");
+                showStatus("MetaMask no detectat.", "error");
             }
         });
 
@@ -252,30 +252,30 @@
             const amountStr = inputAmount.value.trim();
 
             if (!recipient || !amountStr) {
-                showStatus("Faltan campos por rellenar.", "error");
+                showStatus("Falten camps per omplir.", "error");
                 return;
             }
 
             if (!ethers.isAddress(recipient)) {
-                showStatus("La dirección no tiene un formato válido.", "error");
+                showStatus("L'adreça no té un format vàlid.", "error");
                 return;
             }
 
             try {
-                showStatus("Espere confirmación en MetaMask...", "info");
+                showStatus("Esperi confirmació a MetaMask...", "info");
                 const amount = ethers.parseUnits(amountStr, tokenDecimals);
                 const tx = await tokenContract.transfer(recipient, amount);
                 
-                showStatus("Transacción enviada. Esperando validación...", "info");
+                showStatus("Transacció enviada. Esperant validació...", "info");
                 await tx.wait();
                 
-                showStatus("¡Pago transferido con éxito!", "success");
+                showStatus("Pagament transferit amb èxit!", "success");
                 inputAmount.value = "";
                 inputRecipient.value = "";
                 await updateBalance();
             } catch (error) {
                 console.error(error);
-                showStatus("La transacción falló o fue rechazada.", "error");
+                showStatus("La transacció ha fallat o ha estat rebutjada.", "error");
             }
         });
 
@@ -305,10 +305,10 @@
                 // Verificar si lo escaneado es una dirección válida de Ethereum
                 if (ethers.isAddress(decodedText)) {
                     inputRecipient.value = decodedText;
-                    showStatus("Dirección detectada correctamente.", "success");
+                    showStatus("Adreça detectada correctament.", "success");
                     stopScanner();
                 } else {
-                    showStatus("El código QR escaneado no es una dirección válida.", "error");
+                    showStatus("El codi QR escanejat no és una adreça vàlida.", "error");
                 }
             };
 
@@ -320,7 +320,7 @@
                 qrCodeSuccessCallback
             ).catch(err => {
                 console.error("Error al iniciar cámara: ", err);
-                showStatus("No se pudo acceder a la cámara del dispositivo.", "error");
+                showStatus("No s'ha pogut accedir a la càmera del dispositiu.", "error");
                 stopScanner();
             });
         });
