@@ -93,9 +93,20 @@
         <section id="sectionMerchant" class="hidden space-y-4">
             <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4 text-center">
                 <h2 class="text-lg font-bold text-gray-800">Rebre Pagament</h2>
-                <p class="text-xs text-gray-500">Mostra aquest codi QR al comprador per rebre els tokens de forma instantània.</p>
-                
-                <!-- Contenedor del Código QR -->
+                <p class="text-xs text-gray-500">Introdueix l'import, genera el codi QR i mostra'l al comprador.</p>
+
+                <div class="text-left">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Import a cobrar (<span class="tokenSymbol">MONTO</span>)</label>
+                    <input id="chargeAmount" type="number" step="0.01" min="0" placeholder="0.00" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                </div>
+
+                <button id="btnGenerateQR" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg transition">
+                    Generar codi QR de cobrament
+                </button>
+
+                <p id="qrDescription" class="text-xs text-gray-600"></p>
+
+                <!-- Contenedor del Código QR (format EIP-681) -->
                 <div class="flex justify-center py-4">
                     <div id="qrcode" class="p-2 bg-white border rounded-lg shadow-inner"></div>
                 </div>
@@ -120,7 +131,12 @@
     <!-- Lógica de Control de la Aplicación -->
     <script>
         // CONFIGURACIÓN DEL TOKEN (Reemplaza con la dirección de tu token)
-        const TOKEN_CONTRACT_ADDRESS = "0x82a0F251315822A0a322627028ebaB6FF95629F3"; 
+        const TOKEN_CONTRACT_ADDRESS = "0x82a0F251315822A0a322627028ebaB6FF95629F3";
+
+        // Red de pruebas Sepolia (chainId 11155111 = 0xaa36a7)
+        const SEPOLIA_CHAIN_ID = 11155111n;
+        const SEPOLIA_CHAIN_ID_HEX = "0xaa36a7";
+        const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io";
         
         const TOKEN_ABI = [
             "function balanceOf(address owner) view returns (uint256)",
@@ -155,6 +171,10 @@
         const btnSend = document.getElementById("btnSend");
         const qrContainer = document.getElementById("qrcode");
         const merchantAddressDisplay = document.getElementById("merchantAddressDisplay");
+        const inputChargeAmount = document.getElementById("chargeAmount");
+        const btnGenerateQR = document.getElementById("btnGenerateQR");
+        const qrDescription = document.getElementById("qrDescription");
+        let tokenSymbol = "MONTO";
 
         // Elementos del Escáner QR
         const btnScan = document.getElementById("btnScan");
@@ -185,9 +205,32 @@
                 sectionBuyer.classList.add("hidden");
                 sectionMerchant.classList.remove("hidden");
                 if (userAddress) {
-                    generateMerchantQR(userAddress);
+                    merchantAddressDisplay.innerText = userAddress;
                 }
             }
+        }
+
+        // Comprobar que MetaMask está en Sepolia; si no, pedir el cambio de red
+        async function ensureSepolia() {
+            const network = await provider.getNetwork();
+            if (network.chainId === SEPOLIA_CHAIN_ID) return;
+            showStatus("Canviant a la xarxa de proves Sepolia...", "info");
+            try {
+                await window.ethereum.request({
+                    method: "wallet_switchEthereumChain",
+                    params: [{ chainId: SEPOLIA_CHAIN_ID_HEX }]
+                });
+            } catch (err) {
+                throw new Error("Cal seleccionar la xarxa Sepolia a MetaMask per utilitzar l'aplicació.");
+            }
+            // Tras cambiar de red hay que recrear el proveedor
+            provider = new ethers.BrowserProvider(window.ethereum);
+        }
+
+        // Si el usuario cambia de cuenta o de red desde MetaMask, recargamos la página
+        if (typeof window.ethereum !== "undefined") {
+            window.ethereum.on("accountsChanged", () => window.location.reload());
+            window.ethereum.on("chainChanged", () => window.location.reload());
         }
 
         // Conectar Cartera
@@ -199,6 +242,7 @@
                     
                     provider = new ethers.BrowserProvider(window.ethereum);
                     await provider.send("eth_requestAccounts", []);
+                    await ensureSepolia();
                     signer = await provider.getSigner();
                     userAddress = await signer.getAddress();
 
@@ -209,9 +253,9 @@
 
                     btnConnect.classList.add("hidden");
                     userInfo.classList.remove("hidden");
-                    showStatus("Connectat amb èxit.", "success");
+                    showStatus("Connectat amb èxit a la xarxa Sepolia.", "success");
 
-                    generateMerchantQR(userAddress);
+                    merchantAddressDisplay.innerText = userAddress;
 
                 } catch (error) {
                     console.error(error);
@@ -227,7 +271,8 @@
         async function updateMetadata() {
             try {
                 const symbol = await tokenContract.symbol();
-                tokenDecimals = await tokenContract.decimals();
+                tokenDecimals = Number(await tokenContract.decimals());
+                tokenSymbol = symbol;
                 spanTokenSymbols.forEach(el => el.innerText = symbol);
             } catch (err) {
                 console.warn("Utilizando valores predeterminados para el token.");
@@ -251,6 +296,11 @@
             const recipient = inputRecipient.value.trim();
             const amountStr = inputAmount.value.trim();
 
+            if (!tokenContract) {
+                showStatus("Primer connecta MetaMask.", "error");
+                return;
+            }
+
             if (!recipient || !amountStr) {
                 showStatus("Falten camps per omplir.", "error");
                 return;
@@ -268,8 +318,8 @@
                 
                 showStatus("Transacció enviada. Esperant validació...", "info");
                 await tx.wait();
-                
-                showStatus("Pagament transferit amb èxit!", "success");
+
+                showStatus("Pagament transferit amb èxit!", "success", `${SEPOLIA_EXPLORER}/tx/${tx.hash}`);
                 inputAmount.value = "";
                 inputRecipient.value = "";
                 await updateBalance();
@@ -280,11 +330,66 @@
         });
 
         // Generar QR para Recibir Pagos (Comercio)
-        function generateMerchantQR(address) {
+        // Formato estándar EIP-681 para transferencias de tokens ERC-20:
+        // ethereum:<contrato>@<chainId>/transfer?address=<comercio>&uint256=<importe en unidades mínimas>
+        btnGenerateQR.addEventListener("click", () => {
+            if (!userAddress) {
+                showStatus("Primer connecta MetaMask per obtenir la teva adreça de cobrament.", "error");
+                return;
+            }
+            const amountStr = inputChargeAmount.value.trim();
+            if (!amountStr || Number(amountStr) <= 0) {
+                showStatus("Introdueix un import més gran que zero.", "error");
+                return;
+            }
+            try {
+                generateMerchantQR(userAddress, amountStr);
+                showStatus("Codi QR de cobrament generat.", "success");
+            } catch (err) {
+                console.error(err);
+                showStatus("L'import no té un format vàlid.", "error");
+            }
+        });
+
+        function buildPaymentURI(address, amountStr) {
+            const baseUnits = ethers.parseUnits(amountStr, tokenDecimals);
+            return `ethereum:${TOKEN_CONTRACT_ADDRESS}@${SEPOLIA_CHAIN_ID}/transfer?address=${address}&uint256=${baseUnits.toString()}`;
+        }
+
+        // Leer un QR: acepta el formato EIP-681 (con importe) o una dirección simple
+        function parsePaymentQR(text) {
+            const raw = text.trim();
+            if (ethers.isAddress(raw)) {
+                return { address: raw, amount: null };
+            }
+            const match = raw.match(/^ethereum:(0x[0-9a-fA-F]{40})(?:@(\d+))?\/transfer\?(.+)$/);
+            if (!match) return null;
+            const [, contract, chainId, query] = match;
+            if (contract.toLowerCase() !== TOKEN_CONTRACT_ADDRESS.toLowerCase()) return null;
+            if (chainId && BigInt(chainId) !== SEPOLIA_CHAIN_ID) return null;
+            const params = new URLSearchParams(query);
+            const address = params.get("address");
+            const units = params.get("uint256");
+            if (!address || !ethers.isAddress(address)) return null;
+            let amount = null;
+            if (units) {
+                // EIP-681 permite enteros (1500000000000000000) o notación científica (1.5e18)
+                const sci = units.match(/^(\d+(?:\.\d+)?)e(\d+)$/i);
+                let asBigInt = null;
+                if (/^\d+$/.test(units)) asBigInt = BigInt(units);
+                else if (sci) asBigInt = ethers.parseUnits(sci[1], Number(sci[2]));
+                if (asBigInt !== null) amount = ethers.formatUnits(asBigInt, tokenDecimals);
+            }
+            return { address, amount };
+        }
+
+        function generateMerchantQR(address, amountStr) {
             qrContainer.innerHTML = "";
             merchantAddressDisplay.innerText = address;
+            const uri = buildPaymentURI(address, amountStr);
+            qrDescription.innerText = `Cobrament de ${amountStr} ${tokenSymbol}`;
             new QRCode(qrContainer, {
-                text: address,
+                text: uri,
                 width: 180,
                 height: 180,
                 colorDark: "#312e81",
@@ -302,13 +407,19 @@
             html5QrcodeScanner = new Html5Qrcode("interactiveScanner");
             
             const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-                // Verificar si lo escaneado es una dirección válida de Ethereum
-                if (ethers.isAddress(decodedText)) {
-                    inputRecipient.value = decodedText;
-                    showStatus("Adreça detectada correctament.", "success");
+                // Verificar si lo escaneado es un cobro EIP-681 o una dirección válida
+                const payment = parsePaymentQR(decodedText);
+                if (payment) {
+                    inputRecipient.value = payment.address;
+                    if (payment.amount !== null) {
+                        inputAmount.value = payment.amount;
+                        showStatus(`Cobrament detectat: ${payment.amount} ${tokenSymbol}. Revisa-ho i confirma.`, "success");
+                    } else {
+                        showStatus("Adreça detectada. Introdueix la quantitat.", "success");
+                    }
                     stopScanner();
                 } else {
-                    showStatus("El codi QR escanejat no és una adreça vàlida.", "error");
+                    showStatus("El codi QR no és un cobrament vàlid de MONTO a Sepolia.", "error");
                 }
             };
 
@@ -341,8 +452,17 @@
         }
 
         // Utilidad de logs
-        function showStatus(msg, type) {
+        function showStatus(msg, type, link) {
             statusBox.innerText = msg;
+            if (link) {
+                const a = document.createElement("a");
+                a.href = link;
+                a.target = "_blank";
+                a.rel = "noopener";
+                a.className = "block underline mt-1";
+                a.innerText = "Veure la transacció a Etherscan";
+                statusBox.appendChild(a);
+            }
             statusBox.classList.remove("hidden", "bg-blue-100", "text-blue-700", "bg-red-100", "text-red-700", "bg-green-100", "text-green-700");
             if (type === "info") statusBox.classList.add("bg-blue-100", "text-blue-700");
             else if (type === "error") statusBox.classList.add("bg-red-100", "text-red-700");
