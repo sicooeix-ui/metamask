@@ -71,6 +71,13 @@
                         <div id="interactiveScanner" class="w-full"></div>
                         <button id="btnCancelScan" class="absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded">Tancar</button>
                     </div>
+
+                    <!-- Alternativa si la cámara no funciona dentro de MetaMask: leer el QR desde una foto -->
+                    <label for="qrPhoto" class="block w-full text-center text-xs text-indigo-700 underline cursor-pointer py-1">
+                        La càmera no funciona? Fes una foto del QR
+                    </label>
+                    <input id="qrPhoto" type="file" accept="image/*" capture="environment" class="hidden">
+                    <div id="photoReader" class="hidden"></div>
                 </div>
 
                 <div class="border-t border-gray-100 pt-3">
@@ -111,6 +118,18 @@
                     <div id="qrcode" class="p-2 bg-white border rounded-lg shadow-inner"></div>
                 </div>
 
+                <p id="qrHelp" class="hidden text-xs text-gray-500">El client l'escaneja amb la càmera del mòbil i s'obre MetaMask amb el pagament preparat.</p>
+
+                <!-- Aviso de pago recibido -->
+                <div id="paymentWait" class="hidden text-sm text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+                    Esperant el pagament...
+                </div>
+                <div id="paymentOk" class="hidden text-left bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p class="text-lg font-bold text-green-700">Pagament rebut</p>
+                    <p id="paymentOkText" class="text-sm text-green-800"></p>
+                    <a id="paymentOkLink" href="#" target="_blank" rel="noopener" class="text-xs underline text-green-700">Veure la transacció a Etherscan</a>
+                </div>
+
                 <div class="text-left bg-gray-50 p-3 rounded-lg">
                     <p class="text-xs font-semibold text-gray-500 uppercase">La Meva Adreça:</p>
                     <p id="merchantAddressDisplay" class="text-[10px] text-gray-600 font-mono break-all mt-1 bg-white p-1.5 border rounded"></p>
@@ -130,8 +149,12 @@
 
     <!-- Lógica de Control de la Aplicación -->
     <script>
-        // CONFIGURACIÓN DEL TOKEN (Reemplaza con la dirección de tu token)
-        const TOKEN_CONTRACT_ADDRESS = "0x82a0F251315822A0a322627028ebaB6FF95629F3";
+        // CONFIGURACIÓN DEL TOKEN
+        // Después de volver a desplegar el contrato, pon aquí la nueva dirección.
+        // También se puede probar sin tocar el código añadiendo ?token=0x... a la URL.
+        const DEFAULT_TOKEN_ADDRESS = "0x82a0F251315822A0a322627028ebaB6FF95629F3";
+        const urlToken = new URLSearchParams(window.location.search).get("token");
+        const TOKEN_CONTRACT_ADDRESS = (urlToken && /^0x[0-9a-fA-F]{40}$/.test(urlToken)) ? urlToken : DEFAULT_TOKEN_ADDRESS;
 
         // Red de pruebas Sepolia (chainId 11155111 = 0xaa36a7)
         const SEPOLIA_CHAIN_ID = 11155111n;
@@ -142,8 +165,10 @@
             "function balanceOf(address owner) view returns (uint256)",
             "function transfer(address to, uint256 value) returns (bool)",
             "function decimals() view returns (uint8)",
-            "function symbol() view returns (string)"
+            "function symbol() view returns (string)",
+            "event Transfer(address indexed from, address indexed to, uint256 value)"
         ];
+        let paymentWatcher = null;
 
         let provider;
         let signer;
@@ -351,17 +376,22 @@
             }
         });
 
+        // El QR lleva un enlace de MetaMask con el mismo contenido que EIP-681.
+        // Así funciona con la cámara normal del móvil: el enlace abre la app de MetaMask
+        // con el pago ya preparado, sin necesitar la cámara dentro de la página.
+        // https://metamask.app.link/send/<contrato>@<chainId>/transfer?address=<comercio>&uint256=<importe>
         function buildPaymentURI(address, amountStr) {
             const baseUnits = ethers.parseUnits(amountStr, tokenDecimals);
-            return `ethereum:${TOKEN_CONTRACT_ADDRESS}@${SEPOLIA_CHAIN_ID}/transfer?address=${address}&uint256=${baseUnits.toString()}`;
+            return `https://metamask.app.link/send/${TOKEN_CONTRACT_ADDRESS}@${SEPOLIA_CHAIN_ID}/transfer?address=${address}&uint256=${baseUnits.toString()}`;
         }
 
-        // Leer un QR: acepta el formato EIP-681 (con importe) o una dirección simple
+        // Leer un QR: acepta el enlace de MetaMask, el formato EIP-681 (ethereum:...) o una dirección simple
         function parsePaymentQR(text) {
-            const raw = text.trim();
+            let raw = text.trim();
             if (ethers.isAddress(raw)) {
                 return { address: raw, amount: null };
             }
+            raw = raw.replace(/^https:\/\/metamask\.app\.link\/send\//i, "ethereum:");
             const match = raw.match(/^ethereum:(0x[0-9a-fA-F]{40})(?:@(\d+))?\/transfer\?(.+)$/);
             if (!match) return null;
             const [, contract, chainId, query] = match;
@@ -396,7 +426,68 @@
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.M
             });
+            document.getElementById("qrHelp").classList.remove("hidden");
+            watchForPayment(address, ethers.parseUnits(amountStr, tokenDecimals), amountStr);
         }
+
+        // Aviso "Pagament rebut": cada 4 segundos busca transferencias de MONTO hacia el comercio
+        async function watchForPayment(merchant, expectedUnits, amountStr) {
+            if (paymentWatcher) clearInterval(paymentWatcher);
+            const wait = document.getElementById("paymentWait");
+            const ok = document.getElementById("paymentOk");
+            ok.classList.add("hidden");
+            wait.classList.remove("hidden");
+            let fromBlock;
+            try {
+                fromBlock = await provider.getBlockNumber();
+            } catch (err) {
+                console.warn("No s'ha pogut llegir el bloc actual:", err);
+                wait.classList.add("hidden");
+                return;
+            }
+            const filter = tokenContract.filters.Transfer(null, merchant);
+            paymentWatcher = setInterval(async () => {
+                try {
+                    const events = await tokenContract.queryFilter(filter, fromBlock);
+                    const paid = events.find(e => e.args.value >= expectedUnits);
+                    if (paid) {
+                        clearInterval(paymentWatcher);
+                        paymentWatcher = null;
+                        wait.classList.add("hidden");
+                        document.getElementById("paymentOkText").innerText =
+                            `${amountStr} ${tokenSymbol} de ${paid.args.from.slice(0, 6)}...${paid.args.from.slice(-4)}`;
+                        document.getElementById("paymentOkLink").href = `${SEPOLIA_EXPLORER}/tx/${paid.transactionHash}`;
+                        ok.classList.remove("hidden");
+                        await updateBalance();
+                    }
+                } catch (err) {
+                    console.warn("Error comprovant el pagament:", err);
+                }
+            }, 4000);
+        }
+
+        // Leer el QR desde una foto (alternativa cuando la cámara no se abre dentro de MetaMask)
+        document.getElementById("qrPhoto").addEventListener("change", async (event) => {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            try {
+                const reader = new Html5Qrcode("photoReader");
+                const decodedText = await reader.scanFile(file, false);
+                const payment = parsePaymentQR(decodedText);
+                if (!payment) {
+                    showStatus("El codi QR no és un cobrament vàlid de MONTO a Sepolia.", "error");
+                    return;
+                }
+                inputRecipient.value = payment.address;
+                if (payment.amount !== null) inputAmount.value = payment.amount;
+                showStatus("Cobrament llegit de la foto. Revisa-ho i confirma.", "success");
+            } catch (err) {
+                console.error(err);
+                showStatus("No s'ha trobat cap codi QR a la foto. Torna-ho a provar més a prop.", "error");
+            } finally {
+                event.target.value = "";
+            }
+        });
 
         // FUNCIONES DEL ESCÁNER DE CÁMARA (Lector QR)
         btnScan.addEventListener("click", () => {
@@ -431,7 +522,7 @@
                 qrCodeSuccessCallback
             ).catch(err => {
                 console.error("Error al iniciar cámara: ", err);
-                showStatus("No s'ha pogut accedir a la càmera del dispositiu.", "error");
+                showStatus("No s'ha pogut obrir la càmera. Prova «Fes una foto del QR» o escaneja el codi amb la càmera normal del mòbil.", "error");
                 stopScanner();
             });
         });
